@@ -1,0 +1,21 @@
+Here are some steps to run the virtual function detection pass.
+
+0. The following steps were completed by building LLVM 12.0.1. We moved to an earlier but more stable version of LLVM after having some issues running optimization passes on the latest version of LLVM.
+
+1. Compile your program using
+
+clang++ -O0 -fvisibility=hidden -flto -fwhole-program-vtables -c -emit-llvm  virfunc.cpp -o virfunc.bc
+
+Ensure to use the -fvisibility=hidden -flto -fwhole-program-vtables flags as these enable the link time optimization and global view of vtables as required by the pass. The -emit-llvm flag enable the LLVM IR to be outputed to a bitcode file (in this example virfunc.bc)
+
+2. You can view the LLVM IR as a text file by disassembling the bitcode
+
+llvm-dis virfunc.bc -o virfunc.ll
+
+3. Run the LLVM pass as follows:
+
+opt -wholeprogramdevirt virfunc.bc -o virfunc_opt.bc
+
+This will dump the optimized LLVM IR in an output pass virfuc_opt.bc. This will also print out the virtual function calls in the LLVM IR.
+
+
