@@ -101,6 +101,10 @@
 #include <set>
 #include <string>
 
+#include "llvm/Support/raw_ostream.h"
+
+#include <iostream>
+
 using namespace llvm;
 using namespace wholeprogramdevirt;
 
@@ -956,7 +960,11 @@ bool DevirtModule::tryFindVirtualCallTargets(
     // with public LTO visibility.
     if (TM.Bits->GV->getVCallVisibility() ==
         GlobalObject::VCallVisibilityPublic)
-      return false;
+        { 
+         std::cout<<"public LTO visibility\n";
+         return false;
+        }
+      
 
     Constant *Ptr = getPointerAtOffset(TM.Bits->GV->getInitializer(),
                                        TM.Offset + ByteOffset, M);
@@ -977,6 +985,8 @@ bool DevirtModule::tryFindVirtualCallTargets(
 
     TargetsForSlot.push_back({Fn, &TM});
   }
+
+  //std::cout<<"TargetsForSlot size: "<<TargetsForSlot.size()<<"\n";
 
   // Give up if we couldn't find any targets.
   return !TargetsForSlot.empty();
@@ -1736,13 +1746,24 @@ void DevirtModule::scanTypeTestUsers(
     auto &DT = LookupDomTree(*CI->getFunction());
     findDevirtualizableCallsForTypeTest(DevirtCalls, Assumes, CI, DT);
 
+    //std::cout<<"func name"<<std::string(CI->getCalledFunction()->getName())<<"\n";
+    CI->print(errs());
+    std::cout<<"\n";
+    
     Metadata *TypeId =
         cast<MetadataAsValue>(CI->getArgOperand(1))->getMetadata();
     // If we found any, add them to CallSlots.
     if (!Assumes.empty()) {
       Value *Ptr = CI->getArgOperand(0)->stripPointerCasts();
-      for (DevirtCallSite Call : DevirtCalls)
+      for (DevirtCallSite Call : DevirtCalls){
+        //std::cout<<"new inst:";
         CallSlots[{TypeId, Call.Offset}].addCallSite(Ptr, Call.CB, nullptr);
+        //CI->print(errs());
+        //std::cout<<"\n";
+        //CallBase *Callnew = dyn_cast<CallBase>(Call.CB);
+        //std::cout<<"Call func "<<Ptr<<"\n";
+        //Call.print();
+      }
     }
 
     auto RemoveTypeTestAssumes = [&]() {
@@ -1967,6 +1988,7 @@ bool DevirtModule::run() {
 
   Function *TypeTestFunc =
       M.getFunction(Intrinsic::getName(Intrinsic::type_test));
+
   Function *TypeCheckedLoadFunc =
       M.getFunction(Intrinsic::getName(Intrinsic::type_checked_load));
   Function *AssumeFunc = M.getFunction(Intrinsic::getName(Intrinsic::assume));
@@ -1987,11 +2009,15 @@ bool DevirtModule::run() {
 
   if (TypeTestFunc && AssumeFunc)
     scanTypeTestUsers(TypeTestFunc, TypeIdMap);
-
-  if (TypeCheckedLoadFunc)
-    scanTypeCheckedLoadUsers(TypeCheckedLoadFunc);
+  
+  
+  if (TypeCheckedLoadFunc){
+      std::cout<<"typed load func\n";    
+      scanTypeCheckedLoadUsers(TypeCheckedLoadFunc);
+  }
 
   if (ImportSummary) {
+    std::cout<<"entered ImportSummary\n";
     for (auto &S : CallSlots)
       importResolution(S.first, S.second);
 
@@ -2008,11 +2034,14 @@ bool DevirtModule::run() {
     return true;
   }
 
+  //std::cout<<"TypeIdMap "<<TypeIdMap.size()<<"\n";
+
   if (TypeIdMap.empty())
     return true;
 
   // Collect information from summary about which calls to try to devirtualize.
   if (ExportSummary) {
+    std::cout<<"entered  ExportSummary\n";
     DenseMap<GlobalValue::GUID, TinyPtrVector<Metadata *>> MetadataByGUID;
     for (auto &P : TypeIdMap) {
       if (auto *TypeId = dyn_cast<MDString>(P.first))
@@ -2080,6 +2109,7 @@ bool DevirtModule::run() {
                  .WPDRes[S.first.ByteOffset];
     if (tryFindVirtualCallTargets(TargetsForSlot, TypeMemberInfos,
                                   S.first.ByteOffset)) {
+      //std::cout<<"I'm here at tryFindVirtualCallTargets\n";
 
       if (!trySingleImplDevirt(ExportSummary, TargetsForSlot, S.second, Res)) {
         DidVirtualConstProp |=
@@ -2089,10 +2119,16 @@ bool DevirtModule::run() {
       }
 
       // Collect functions devirtualized at least for one call site for stats.
-      if (RemarksEnabled)
-        for (const auto &T : TargetsForSlot)
+      // if (RemarksEnabled)
+      //std::cout<<"TargetsForSlot len:"<<TargetsForSlot.size()<<"\n";
+      if (1)
+        for (const auto &T : TargetsForSlot){
+          std::cout<<"Possible vfunc targets : "<<std::string(T.Fn->getName())<<"\n";
           if (T.WasDevirt)
             DevirtTargets[std::string(T.Fn->getName())] = T.Fn;
+        }
+
+        //std::cout<<"DevirtTargets len:"<<DevirtTargets.size()<<"\n";    
     }
 
     // CFI-specific: if we are exporting and any llvm.type.checked.load
