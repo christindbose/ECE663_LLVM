@@ -1,0 +1,18 @@
+clang++ -O1 -Xclang -S -disable-llvm-passes -emit-llvm test_hello.cpp
+
+ llvm-as virfunc.ll
+ llvm-dis virfunc.ll
+
+ opt -wholeprogramdevirt -analyze -stats virfunc.bc -o virfunc_opt.bc
+  
+  -DLLVM_ENABLE_ASSERTIONS=ON
+cmake -DLLVM_ENABLE_PROJECTS=clang -DCMAKE_BUILD_TYPE=Debug -DLLVM_ENABLE_ASSERTIONS=ON -G "Unix Makefiles" ../llvm
+
+clang++ -O1 -fvisibility=hidden -flto -fwhole-program-vtables -c -emit-llvm virfunc.cpp -o virfunc.bc
+
+opt -wholeprogramdevirt virfunc.bc -o virfunc_opt.bc
+
+clang++ -O0 -fvisibility=hidden -flto -fwhole-program-vtables -c -emit-llvm  virfunc.cpp -o virfunc.bc
+
+
+
